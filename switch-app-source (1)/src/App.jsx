@@ -902,6 +902,19 @@ export default function SwitchLeaderApp() {
 
     const thisMonthAnniversaries = anniversaryEntries.sort((a, b) => a.years - b.years);
 
+    function parseScheduleDate(dateStr) {
+      const [monAbbr, dayStr] = dateStr.split(" ");
+      const monthIndex = MONTHS.indexOf(monAbbr);
+      const day = parseInt(dayStr, 10);
+      if (monthIndex === -1 || isNaN(day)) return null;
+      return new Date(now.getFullYear(), monthIndex, day);
+    }
+
+    const upcomingEvent = SCHEDULE.find((s) => {
+      const d = parseScheduleDate(s.date);
+      return d && d >= todayMidnight;
+    }) || SCHEDULE[SCHEDULE.length - 1];
+
     return (
       <div style={{ padding: "18px 18px 8px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, gap: 10 }}>
@@ -994,8 +1007,9 @@ export default function SwitchLeaderApp() {
               width: 18, height: 18, borderRadius: 5, border: `2px solid ${INK}55`, flexShrink: 0, marginTop: 3,
             }} />
             <div>
-              <div style={{ fontWeight: 700, color: INK, marginBottom: 4 }}>{SCHEDULE[0].title}</div>
-              <div style={{ fontSize: 14, color: MUTED }}>{SCHEDULE[0].note}</div>
+              <div style={{ fontWeight: 700, color: INK, marginBottom: 2 }}>{upcomingEvent.title}</div>
+              <div style={{ fontSize: 12, color: MUTED, marginBottom: 4 }}>{upcomingEvent.date} · {upcomingEvent.time}</div>
+              <div style={{ fontSize: 14, color: MUTED }}>{upcomingEvent.note}</div>
             </div>
           </div>
         </Card>
