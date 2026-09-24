@@ -153,6 +153,14 @@ async function apiSet(key, value) {
   }
 }
 
+function parseScheduleDate(dateStr, year) {
+  const [monAbbr, dayStr] = dateStr.split(" ");
+  const monthIndex = MONTHS.indexOf(monAbbr);
+  const day = parseInt(dayStr, 10);
+  if (monthIndex === -1 || isNaN(day)) return null;
+  return new Date(year, monthIndex, day);
+}
+
 function Logo() {
   return (
     <div style={{ textAlign: "center", marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
@@ -902,16 +910,8 @@ export default function SwitchLeaderApp() {
 
     const thisMonthAnniversaries = anniversaryEntries.sort((a, b) => a.years - b.years);
 
-    function parseScheduleDate(dateStr) {
-      const [monAbbr, dayStr] = dateStr.split(" ");
-      const monthIndex = MONTHS.indexOf(monAbbr);
-      const day = parseInt(dayStr, 10);
-      if (monthIndex === -1 || isNaN(day)) return null;
-      return new Date(now.getFullYear(), monthIndex, day);
-    }
-
     const upcomingEvent = SCHEDULE.find((s) => {
-      const d = parseScheduleDate(s.date);
+      const d = parseScheduleDate(s.date, now.getFullYear());
       return d && d >= todayMidnight;
     }) || SCHEDULE[SCHEDULE.length - 1];
 
@@ -1213,10 +1213,20 @@ export default function SwitchLeaderApp() {
         </div>
       );
     }
+    const today = new Date();
+    const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const upcomingSchedule = SCHEDULE.filter((s) => {
+      const d = parseScheduleDate(s.date, today.getFullYear());
+      return d && d >= todayMidnight;
+    });
+
     return (
       <div style={{ padding: "18px 18px 8px" }}>
         <div style={{ fontSize: 12, color: MUTED, marginBottom: 12 }}>Semester schedule</div>
-        {SCHEDULE.map((s) => (
+        {upcomingSchedule.length === 0 && (
+          <div style={{ fontSize: 13, color: MUTED }}>Nothing left on the schedule.</div>
+        )}
+        {upcomingSchedule.map((s) => (
           <button key={s.date} onClick={() => setEventDetail(s.date)} style={{
             display: "block", width: "100%", background: "none", border: "none", padding: 0,
             textAlign: "left", cursor: "pointer", fontFamily: "inherit",
