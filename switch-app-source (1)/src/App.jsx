@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Home, Calendar, Users, MessageCircle, BookOpen, ChevronRight,
   Bell, Gift, ArrowLeft, Heart, MessageSquare, Link2, BarChart2, Check, Camera, User, GraduationCap
@@ -395,6 +395,14 @@ export default function SwitchLeaderApp() {
   const [attendanceDraft, setAttendanceDraft] = useState({});
   const [confirmClearAll, setConfirmClearAll] = useState(false);
   const [checkedStorage, setCheckedStorage] = useState(false);
+  // Set right before applying a server-fetched update, so the matching save effect
+  // knows to just cache it locally instead of re-broadcasting it back to the server.
+  const skipRosterSync = useRef(false);
+  const skipStudentsSync = useRef(false);
+  const skipPostsSync = useRef(false);
+  const skipPrayerSync = useRef(false);
+  const skipCelebrationsSync = useRef(false);
+  const skipAnnouncementsSync = useRef(false);
   const [roster, setRoster] = useState({
     leadership: [...LEADERSHIP_TEAM],
     switch: [...SWITCH_TEAM],
@@ -454,12 +462,12 @@ export default function SwitchLeaderApp() {
         apiGet("roster"), apiGet("students"), apiGet("posts"),
         apiGet("prayerRequests"), apiGet("celebrations"), apiGet("announcements"),
       ]);
-      if (hasContent(r)) setRoster(r);
-      if (hasContent(s)) setStudents(s);
-      if (hasContent(p)) setPosts(p);
-      if (hasContent(pr)) setPrayerRequests(pr);
-      if (hasContent(c)) setCelebrations(c);
-      if (hasContent(a)) setAnnouncements(a);
+      if (hasContent(r)) { skipRosterSync.current = true; setRoster(r); }
+      if (hasContent(s)) { skipStudentsSync.current = true; setStudents(s); }
+      if (hasContent(p)) { skipPostsSync.current = true; setPosts(p); }
+      if (hasContent(pr)) { skipPrayerSync.current = true; setPrayerRequests(pr); }
+      if (hasContent(c)) { skipCelebrationsSync.current = true; setCelebrations(c); }
+      if (hasContent(a)) { skipAnnouncementsSync.current = true; setAnnouncements(a); }
       setCheckedStorage(true);
     })();
   }, []);
@@ -472,12 +480,12 @@ export default function SwitchLeaderApp() {
         apiGet("roster"), apiGet("students"), apiGet("posts"),
         apiGet("prayerRequests"), apiGet("celebrations"), apiGet("announcements"),
       ]);
-      if (hasContent(r)) setRoster(r);
-      if (hasContent(s)) setStudents(s);
-      if (hasContent(p)) setPosts(p);
-      if (hasContent(pr)) setPrayerRequests(pr);
-      if (hasContent(c)) setCelebrations(c);
-      if (hasContent(a)) setAnnouncements(a);
+      if (hasContent(r)) { skipRosterSync.current = true; setRoster(r); }
+      if (hasContent(s)) { skipStudentsSync.current = true; setStudents(s); }
+      if (hasContent(p)) { skipPostsSync.current = true; setPosts(p); }
+      if (hasContent(pr)) { skipPrayerSync.current = true; setPrayerRequests(pr); }
+      if (hasContent(c)) { skipCelebrationsSync.current = true; setCelebrations(c); }
+      if (hasContent(a)) { skipAnnouncementsSync.current = true; setAnnouncements(a); }
     }, 20000);
     return () => clearInterval(interval);
   }, [checkedStorage]);
@@ -489,6 +497,7 @@ export default function SwitchLeaderApp() {
     } catch (e) {
       // storage unavailable — roster changes won't survive a refresh
     }
+    if (skipRosterSync.current) { skipRosterSync.current = false; return; }
     apiSet("roster", roster);
   }, [roster, checkedStorage]);
 
@@ -508,6 +517,7 @@ export default function SwitchLeaderApp() {
     } catch (e) {
       // storage unavailable — announcements won't survive a refresh
     }
+    if (skipAnnouncementsSync.current) { skipAnnouncementsSync.current = false; return; }
     apiSet("announcements", announcements);
   }, [announcements, checkedStorage]);
 
@@ -518,6 +528,7 @@ export default function SwitchLeaderApp() {
     } catch (e) {
       // storage unavailable — student roster won't survive a refresh
     }
+    if (skipStudentsSync.current) { skipStudentsSync.current = false; return; }
     apiSet("students", students);
   }, [students, checkedStorage]);
 
@@ -526,6 +537,7 @@ export default function SwitchLeaderApp() {
     try {
       window.localStorage.setItem("switchPosts", JSON.stringify(posts));
     } catch (e) {}
+    if (skipPostsSync.current) { skipPostsSync.current = false; return; }
     apiSet("posts", posts);
   }, [posts, checkedStorage]);
 
@@ -534,6 +546,7 @@ export default function SwitchLeaderApp() {
     try {
       window.localStorage.setItem("switchPrayerRequests", JSON.stringify(prayerRequests));
     } catch (e) {}
+    if (skipPrayerSync.current) { skipPrayerSync.current = false; return; }
     apiSet("prayerRequests", prayerRequests);
   }, [prayerRequests, checkedStorage]);
 
@@ -542,6 +555,7 @@ export default function SwitchLeaderApp() {
     try {
       window.localStorage.setItem("switchCelebrations", JSON.stringify(celebrations));
     } catch (e) {}
+    if (skipCelebrationsSync.current) { skipCelebrationsSync.current = false; return; }
     apiSet("celebrations", celebrations);
   }, [celebrations, checkedStorage]);
 
