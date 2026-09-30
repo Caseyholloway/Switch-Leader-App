@@ -10,6 +10,8 @@ const SURFACE = "#1A1A1E";
 const EMBER = "#FFFFFF";
 const EMBER_TEXT = "#0B0B0D";
 const CORAL = "#FF6B57";
+const ATTEND_GREEN = "#4ADE80";
+const ATTEND_YELLOW = "#FBBF24";
 const MUTED = "#8A8D9A";
 
 const TEAMS = [
@@ -159,6 +161,32 @@ function parseScheduleDate(dateStr, year) {
   const day = parseInt(dayStr, 10);
   if (monthIndex === -1 || isNaN(day)) return null;
   return new Date(year, monthIndex, day);
+}
+
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function daysSinceLastAttended(student) {
+  if (!student.attendance || student.attendance.length === 0) return Infinity;
+  const todayMidnight = new Date();
+  todayMidnight.setHours(0, 0, 0, 0);
+  const lastTime = Math.max(...student.attendance.map((d) => new Date(d + "T00:00:00").getTime()));
+  return Math.floor((todayMidnight.getTime() - lastTime) / 86400000);
+}
+
+function attendanceColor(days) {
+  if (days <= 14) return ATTEND_GREEN;
+  if (days <= 34) return ATTEND_YELLOW;
+  return CORAL;
+}
+
+function attendanceLabel(days) {
+  if (days === Infinity) return "Never attended";
+  if (days === 0) return "Attended today";
+  if (days === 1) return "Attended yesterday";
+  return `Last attended ${days} days ago`;
 }
 
 function Logo() {
@@ -352,6 +380,8 @@ export default function SwitchLeaderApp() {
   const [addingStudent, setAddingStudent] = useState(false);
   const [studentDraft, setStudentDraft] = useState({ name: "", studentPhone: "", parentName: "", parentPhone: "" });
   const [confirmRemoveStudent, setConfirmRemoveStudent] = useState(null);
+  const [takingAttendance, setTakingAttendance] = useState(false);
+  const [attendanceDraft, setAttendanceDraft] = useState({});
   const [confirmClearAll, setConfirmClearAll] = useState(false);
   const [checkedStorage, setCheckedStorage] = useState(false);
   const [roster, setRoster] = useState({
@@ -1254,7 +1284,7 @@ export default function SwitchLeaderApp() {
       const canManage = isAdmin || isMyGroup;
       return (
         <div style={{ padding: "18px 18px 8px" }}>
-          <button onClick={() => { setStudentGroupDetail(null); setExpandedStudent(null); setAddingStudent(false); setConfirmRemoveStudent(null); }} style={{
+          <button onClick={() => { setStudentGroupDetail(null); setExpandedStudent(null); setAddingStudent(false); setConfirmRemoveStudent(null); setTakingAttendance(false); }} style={{
             background: "none", border: "none", color: MUTED, fontSize: 13, marginBottom: 12,
             cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontFamily: "inherit",
           }}><ArrowLeft size={14} /> Back</button>
@@ -1264,22 +1294,82 @@ export default function SwitchLeaderApp() {
             {leaders.length > 0 ? `Led by ${leaders.map((l) => l.name).join(", ")}` : "No leader assigned yet"}
           </div>
 
+          {canManage && groupStudents.length > 0 && !takingAttendance && (
+            <button onClick={() => {
+              const draft = {};
+              groupStudents.forEach((s) => { draft[s.id] = (s.attendance || []).includes(todayISO()); });
+              setAttendanceDraft(draft);
+              setTakingAttendance(true);
+            }} style={{
+              width: "100%", padding: "14px 0", borderRadius: 14, border: "none",
+              background: EMBER, color: EMBER_TEXT, fontWeight: 700, fontSize: 15,
+              cursor: "pointer", fontFamily: "inherit", marginBottom: 16,
+            }}>Take Attendance for Today</button>
+          )}
+
+          {canManage && takingAttendance && (
+            <Card>
+              <div style={{ fontWeight: 700, color: INK, marginBottom: 2 }}>Who's here today?</div>
+              <div style={{ fontSize: 12, color: MUTED, marginBottom: 14 }}>
+                {new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
+              </div>
+              {groupStudents.map((s) => (
+                <label key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", cursor: "pointer" }}>
+                  <input type="checkbox" checked={!!attendanceDraft[s.id]}
+                    onChange={(e) => setAttendanceDraft((d) => ({ ...d, [s.id]: e.target.checked }))} />
+                  <span style={{ fontSize: 14, color: INK }}>{s.name}</span>
+                </label>
+              ))}
+              <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+                <button onClick={() => setTakingAttendance(false)} style={{
+                  flex: 1, padding: "12px 0", borderRadius: 12, border: `1px solid ${INK}33`,
+                  background: "none", color: INK, fontWeight: 600, fontFamily: "inherit", cursor: "pointer",
+                }}>Cancel</button>
+                <button onClick={() => {
+                  const today = todayISO();
+                  setStudents(students.map((s) => {
+                    if (s.groupId !== studentGroupDetail) return s;
+                    const checked = !!attendanceDraft[s.id];
+                    const existing = s.attendance || [];
+                    const has = existing.includes(today);
+                    let attendance = existing;
+                    if (checked && !has) attendance = [...existing, today];
+                    else if (!checked && has) attendance = existing.filter((d) => d !== today);
+                    return { ...s, attendance };
+                  }));
+                  setTakingAttendance(false);
+                }} style={{
+                  flex: 1, padding: "12px 0", borderRadius: 12, border: "none",
+                  background: EMBER, color: EMBER_TEXT, fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
+                }}>Save attendance</button>
+              </div>
+            </Card>
+          )}
+
           {groupStudents.length === 0 && (
             <div style={{ fontSize: 13, color: MUTED, marginBottom: 14 }}>No students added to this group yet.</div>
           )}
           {groupStudents.map((s) => {
             const isOpen = expandedStudent === s.id;
+            const daysSince = daysSinceLastAttended(s);
+            const dotColor = attendanceColor(daysSince);
             return (
               <Card key={s.id} style={{ padding: 0, overflow: "hidden" }}>
                 <button onClick={() => setExpandedStudent(isOpen ? null : s.id)} style={{
                   width: "100%", display: "flex", alignItems: "center", gap: 12, background: "none",
                   border: "none", cursor: "pointer", fontFamily: "inherit", padding: "14px 16px", textAlign: "left",
                 }}>
-                  <div style={{
-                    width: 36, height: 36, borderRadius: 18, background: `${EMBER}44`, flexShrink: 0,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 13, fontWeight: 600, color: INK,
-                  }}>{s.name.split(" ").map((n) => n[0]).slice(0, 2).join("")}</div>
+                  <div style={{ position: "relative", flexShrink: 0 }}>
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 18, background: `${EMBER}44`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 13, fontWeight: 600, color: INK,
+                    }}>{s.name.split(" ").map((n) => n[0]).slice(0, 2).join("")}</div>
+                    <div style={{
+                      position: "absolute", bottom: -2, right: -2, width: 12, height: 12, borderRadius: 6,
+                      background: dotColor, border: `2px solid ${SURFACE}`,
+                    }} />
+                  </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 14, color: INK }}>{s.name}</div>
                     <div style={{ fontSize: 12, color: MUTED }}>{s.studentPhone || "No cell on file"}</div>
@@ -1288,6 +1378,9 @@ export default function SwitchLeaderApp() {
                 </button>
                 {isOpen && (
                   <div style={{ padding: "0 16px 16px" }}>
+                    <div style={{ fontSize: 13, marginBottom: 10, color: dotColor, fontWeight: 600 }}>
+                      {attendanceLabel(daysSince)}
+                    </div>
                     <div style={{ fontSize: 13, color: MUTED, marginBottom: 6 }}>
                       Student cell: <span style={{ color: INK }}>{s.studentPhone || "—"}</span>
                     </div>
@@ -1348,7 +1441,7 @@ export default function SwitchLeaderApp() {
                   setStudents([...students, {
                     id: `s-${Date.now()}`, name: studentDraft.name, grade: group.grade,
                     studentPhone: studentDraft.studentPhone, parentName: studentDraft.parentName,
-                    parentPhone: studentDraft.parentPhone, groupId: studentGroupDetail,
+                    parentPhone: studentDraft.parentPhone, groupId: studentGroupDetail, attendance: [],
                   }]);
                   setStudentDraft({ name: "", studentPhone: "", parentName: "", parentPhone: "" });
                   setAddingStudent(false);
