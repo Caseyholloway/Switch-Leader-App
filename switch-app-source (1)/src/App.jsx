@@ -143,6 +143,17 @@ async function apiGet(key) {
   }
 }
 
+// True only if the value has real data in it. Used to stop an empty/not-yet-synced
+// server response from wiping out real data already sitting on this device.
+function hasContent(v) {
+  if (!v) return false;
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === "object") {
+    return Object.values(v).some((x) => (Array.isArray(x) ? x.length > 0 : !!x));
+  }
+  return true;
+}
+
 async function apiSet(key, value) {
   try {
     await fetch(`${API_BASE}?key=${key}`, {
@@ -443,12 +454,12 @@ export default function SwitchLeaderApp() {
         apiGet("roster"), apiGet("students"), apiGet("posts"),
         apiGet("prayerRequests"), apiGet("celebrations"), apiGet("announcements"),
       ]);
-      if (r) setRoster(r);
-      if (s) setStudents(s);
-      if (p) setPosts(p);
-      if (pr) setPrayerRequests(pr);
-      if (c) setCelebrations(c);
-      if (a) setAnnouncements(a);
+      if (hasContent(r)) setRoster(r);
+      if (hasContent(s)) setStudents(s);
+      if (hasContent(p)) setPosts(p);
+      if (hasContent(pr)) setPrayerRequests(pr);
+      if (hasContent(c)) setCelebrations(c);
+      if (hasContent(a)) setAnnouncements(a);
       setCheckedStorage(true);
     })();
   }, []);
@@ -461,12 +472,12 @@ export default function SwitchLeaderApp() {
         apiGet("roster"), apiGet("students"), apiGet("posts"),
         apiGet("prayerRequests"), apiGet("celebrations"), apiGet("announcements"),
       ]);
-      if (r) setRoster(r);
-      if (s) setStudents(s);
-      if (p) setPosts(p);
-      if (pr) setPrayerRequests(pr);
-      if (c) setCelebrations(c);
-      if (a) setAnnouncements(a);
+      if (hasContent(r)) setRoster(r);
+      if (hasContent(s)) setStudents(s);
+      if (hasContent(p)) setPosts(p);
+      if (hasContent(pr)) setPrayerRequests(pr);
+      if (hasContent(c)) setCelebrations(c);
+      if (hasContent(a)) setAnnouncements(a);
     }, 20000);
     return () => clearInterval(interval);
   }, [checkedStorage]);
