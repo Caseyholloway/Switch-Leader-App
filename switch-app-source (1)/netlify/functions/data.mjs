@@ -8,6 +8,7 @@ const ALLOWED_KEYS = new Set([
   "prayerRequests",
   "celebrations",
   "announcements",
+  "smallGroups",
 ]);
 
 const CORS_HEADERS = {
