@@ -41,6 +41,7 @@ const STUDENT_GROUPS = STUDENT_GENDERS.flatMap((g) =>
   }))
 );
 const SEED_STUDENTS = [];
+const SEED_SMALL_GROUPS = [];
 
 const SCHEDULE = [
   { date: "Sep 23", title: "No Switch IRL — Family Reunion", time: "—", note: "No in-person Switch this week (Family Reunion). Intern Orientation Sept 29." },
@@ -352,7 +353,7 @@ export default function SwitchLeaderApp() {
   const [screen, setScreen] = useState("welcome");
   const [tab, setTab] = useState("home");
   const [form, setForm] = useState({
-    name: "", phone: "", photo: "", team: null, grade: "", leadershipRole: "", month: "", day: "", started: "", startedMonth: "", startedYear: "", startedUnsure: false,
+    name: "", phone: "", photo: "", team: null, grade: "", leadershipRole: "", smallGroupName: "", month: "", day: "", started: "", startedMonth: "", startedYear: "", startedUnsure: false,
     drink: "", coffee: "", snack: "", notifications: null,
   });
   const [error, setError] = useState("");
@@ -368,6 +369,7 @@ export default function SwitchLeaderApp() {
   const [prayerRequests, setPrayerRequests] = useState(PRAYER_REQUESTS);
   const [celebrationDraft, setCelebrationDraft] = useState("");
   const [celebrations, setCelebrations] = useState(CELEBRATIONS);
+  const [smallGroups, setSmallGroups] = useState(SEED_SMALL_GROUPS);
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminLogin, setAdminLogin] = useState(false);
   const [adminCode, setAdminCode] = useState("");
@@ -393,6 +395,11 @@ export default function SwitchLeaderApp() {
   const [confirmRemoveStudent, setConfirmRemoveStudent] = useState(null);
   const [takingAttendance, setTakingAttendance] = useState(false);
   const [attendanceDraft, setAttendanceDraft] = useState({});
+  const [selectedSmallGroupId, setSelectedSmallGroupId] = useState(null);
+  const [combiningGroups, setCombiningGroups] = useState(false);
+  const [combineSelection, setCombineSelection] = useState([]);
+  const [showCombineNameStep, setShowCombineNameStep] = useState(false);
+  const [combineName, setCombineName] = useState("");
   const [confirmClearAll, setConfirmClearAll] = useState(false);
   const [checkedStorage, setCheckedStorage] = useState(false);
   // Set right before applying a server-fetched update, so the matching save effect
@@ -402,6 +409,7 @@ export default function SwitchLeaderApp() {
   const skipPostsSync = useRef(false);
   const skipPrayerSync = useRef(false);
   const skipCelebrationsSync = useRef(false);
+  const skipSmallGroupsSync = useRef(false);
   const skipAnnouncementsSync = useRef(false);
   const [roster, setRoster] = useState({
     leadership: [...LEADERSHIP_TEAM],
@@ -451,6 +459,8 @@ export default function SwitchLeaderApp() {
       if (savedPrayer) setPrayerRequests(JSON.parse(savedPrayer));
       const savedCelebrations = window.localStorage.getItem("switchCelebrations");
       if (savedCelebrations) setCelebrations(JSON.parse(savedCelebrations));
+      const savedSmallGroups = window.localStorage.getItem("switchSmallGroups");
+      if (savedSmallGroups) setSmallGroups(JSON.parse(savedSmallGroups));
     } catch (e) {
       // storage unavailable — just start at onboarding with seed data
     }
@@ -458,9 +468,9 @@ export default function SwitchLeaderApp() {
     // Pull the shared, server-side copy if it's available (once the backend is deployed).
     // Falls back to whatever was just loaded from this device if the server has nothing yet.
     (async () => {
-      const [r, s, p, pr, c, a] = await Promise.all([
+      const [r, s, p, pr, c, a, sg] = await Promise.all([
         apiGet("roster"), apiGet("students"), apiGet("posts"),
-        apiGet("prayerRequests"), apiGet("celebrations"), apiGet("announcements"),
+        apiGet("prayerRequests"), apiGet("celebrations"), apiGet("announcements"), apiGet("smallGroups"),
       ]);
       if (hasContent(r)) { skipRosterSync.current = true; setRoster(r); }
       if (hasContent(s)) { skipStudentsSync.current = true; setStudents(s); }
@@ -468,6 +478,7 @@ export default function SwitchLeaderApp() {
       if (hasContent(pr)) { skipPrayerSync.current = true; setPrayerRequests(pr); }
       if (hasContent(c)) { skipCelebrationsSync.current = true; setCelebrations(c); }
       if (hasContent(a)) { skipAnnouncementsSync.current = true; setAnnouncements(a); }
+      if (hasContent(sg)) { skipSmallGroupsSync.current = true; setSmallGroups(sg); }
       setCheckedStorage(true);
     })();
   }, []);
@@ -476,9 +487,9 @@ export default function SwitchLeaderApp() {
   useEffect(() => {
     if (!checkedStorage) return;
     const interval = setInterval(async () => {
-      const [r, s, p, pr, c, a] = await Promise.all([
+      const [r, s, p, pr, c, a, sg] = await Promise.all([
         apiGet("roster"), apiGet("students"), apiGet("posts"),
-        apiGet("prayerRequests"), apiGet("celebrations"), apiGet("announcements"),
+        apiGet("prayerRequests"), apiGet("celebrations"), apiGet("announcements"), apiGet("smallGroups"),
       ]);
       if (hasContent(r)) { skipRosterSync.current = true; setRoster(r); }
       if (hasContent(s)) { skipStudentsSync.current = true; setStudents(s); }
@@ -486,6 +497,7 @@ export default function SwitchLeaderApp() {
       if (hasContent(pr)) { skipPrayerSync.current = true; setPrayerRequests(pr); }
       if (hasContent(c)) { skipCelebrationsSync.current = true; setCelebrations(c); }
       if (hasContent(a)) { skipAnnouncementsSync.current = true; setAnnouncements(a); }
+      if (hasContent(sg)) { skipSmallGroupsSync.current = true; setSmallGroups(sg); }
     }, 20000);
     return () => clearInterval(interval);
   }, [checkedStorage]);
@@ -559,6 +571,15 @@ export default function SwitchLeaderApp() {
     apiSet("celebrations", celebrations);
   }, [celebrations, checkedStorage]);
 
+  useEffect(() => {
+    if (!checkedStorage) return;
+    try {
+      window.localStorage.setItem("switchSmallGroups", JSON.stringify(smallGroups));
+    } catch (e) {}
+    if (skipSmallGroupsSync.current) { skipSmallGroupsSync.current = false; return; }
+    apiSet("smallGroups", smallGroups);
+  }, [smallGroups, checkedStorage]);
+
   function findByPhone(phone) {
     const all = [
       ...roster.leadership.map((p) => ({ ...p, listId: "leadership" })),
@@ -585,10 +606,30 @@ export default function SwitchLeaderApp() {
     } catch (e) {
       // storage unavailable — app still works, just won't remember next visit
     }
+    const isSmallGroupTeam = form.team === "small-group-guys" || form.team === "small-group-girls";
+    let smallGroupId = null;
+    if (isSmallGroupTeam) {
+      const existing = roster.switch.find((p) => p.phone === form.phone && p.smallGroupId);
+      if (existing && existing.teamId === form.team && existing.grade === form.grade) {
+        smallGroupId = existing.smallGroupId;
+        const newName = form.smallGroupName.trim();
+        if (newName) {
+          setSmallGroups((sgs) => sgs.map((sg) => (sg.id === smallGroupId ? { ...sg, name: newName } : sg)));
+        }
+      } else {
+        smallGroupId = `sg-${Date.now()}`;
+        setSmallGroups((sgs) => [...sgs, {
+          id: smallGroupId,
+          name: form.smallGroupName.trim() || `${form.name.split(" ")[0]}'s Group`,
+          teamId: form.team, grade: form.grade,
+        }]);
+      }
+    }
     const entry = {
       name: form.name, phone: form.phone, photo: form.photo || null,
       role: form.team === "leadership" ? form.leadershipRole : teamLabel(form.team), teamId: form.team,
-      grade: (form.team === "small-group-guys" || form.team === "small-group-girls") ? form.grade : null,
+      grade: isSmallGroupTeam ? form.grade : null,
+      smallGroupId,
       birthday: form.month && form.day ? `${form.month} ${form.day}` : "—",
       started: form.startedUnsure ? "Not sure" : (form.startedMonth && form.startedYear ? `${form.startedMonth} ${form.startedYear}` : "—"),
       drink: form.drink || "—", coffee: form.coffee || "—", snack: form.snack || "—",
@@ -608,6 +649,7 @@ export default function SwitchLeaderApp() {
       window.localStorage.removeItem("switchPosts");
       window.localStorage.removeItem("switchPrayerRequests");
       window.localStorage.removeItem("switchCelebrations");
+      window.localStorage.removeItem("switchSmallGroups");
     } catch (e) {}
     setRoster({ leadership: [], switch: [] });
     setStudents([]);
@@ -616,18 +658,20 @@ export default function SwitchLeaderApp() {
     setPosts([]);
     setPrayerRequests([]);
     setCelebrations([]);
+    setSmallGroups([]);
     apiSet("roster", { leadership: [], switch: [] });
     apiSet("students", []);
     apiSet("announcements", []);
     apiSet("posts", []);
     apiSet("prayerRequests", []);
     apiSet("celebrations", []);
+    apiSet("smallGroups", []);
   }
 
   function resetDevice() {
     try { window.localStorage.removeItem("switchLeaderProfile"); } catch (e) {}
     setForm({
-      name: "", phone: "", photo: "", team: null, grade: "", leadershipRole: "", month: "", day: "", started: "", startedMonth: "", startedYear: "", startedUnsure: false,
+      name: "", phone: "", photo: "", team: null, grade: "", leadershipRole: "", smallGroupName: "", month: "", day: "", started: "", startedMonth: "", startedYear: "", startedUnsure: false,
       drink: "", coffee: "", snack: "", notifications: null,
     });
     setIsAdmin(false);
@@ -747,14 +791,24 @@ export default function SwitchLeaderApp() {
                 <PhotoUpload photo={form.photo} onChange={set("photo")} />
                 <TextField label="Name" value={form.name} onChange={set("name")} placeholder="First and last name" />
                 <TextField label="Phone number" value={form.phone} onChange={set("phone")} placeholder="(405) 555-1234" type="tel" />
-                <SelectField label="Team" value={form.team} onChange={set("team")} options={TEAMS} placeholder="Choose your team" />
+                <SelectField label="Team" value={form.team} onChange={(v) => {
+                  setForm((f) => ({
+                    ...f, team: v,
+                    smallGroupName: (v === "small-group-guys" || v === "small-group-girls") && !f.smallGroupName && f.name
+                      ? `${f.name.split(" ")[0]}'s Group` : f.smallGroupName,
+                  }));
+                }} options={TEAMS} placeholder="Choose your team" />
                 {form.team === "leadership" && (
                   <SelectField label="Leadership role" value={form.leadershipRole} onChange={set("leadershipRole")}
                     options={LEADERSHIP_ROLES.map((r) => ({ id: r, label: r }))} placeholder="Which role?" />
                 )}
                 {(form.team === "small-group-guys" || form.team === "small-group-girls") && (
-                  <SelectField label="Grade" value={form.grade} onChange={set("grade")}
-                    options={GRADES.map((g) => ({ id: g, label: g }))} placeholder="Which grade do you lead?" />
+                  <>
+                    <SelectField label="Grade" value={form.grade} onChange={set("grade")}
+                      options={GRADES.map((g) => ({ id: g, label: g }))} placeholder="Which grade do you lead?" />
+                    <TextField label="Your group's name" value={form.smallGroupName} onChange={set("smallGroupName")}
+                      placeholder="e.g. Casey's Group" />
+                  </>
                 )}
                 <div style={{ display: "flex", gap: 10 }}>
                   <div style={{ flex: 1 }}>
@@ -870,7 +924,7 @@ export default function SwitchLeaderApp() {
   function TabButton({ id, icon: Icon, label }) {
     const active = tab === id;
     return (
-      <button onClick={() => { setTab(id); setTeamDetail(null); setStudentGroupDetail(null); }} style={{
+      <button onClick={() => { setTab(id); setTeamDetail(null); setStudentGroupDetail(null); setSelectedSmallGroupId(null); setCombiningGroups(false); setCombineSelection([]); setShowCombineNameStep(false); }} style={{
         flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
         padding: "10px 0 8px", background: "none", border: "none", cursor: "pointer",
         color: active ? EMBER : `${INK}66`, fontFamily: "inherit", minWidth: 0,
@@ -1140,14 +1194,24 @@ export default function SwitchLeaderApp() {
           <PhotoUpload photo={form.photo} onChange={set("photo")} />
           <TextField label="Name" value={form.name} onChange={set("name")} placeholder="First and last name" />
           <TextField label="Phone number" value={form.phone} onChange={set("phone")} placeholder="(405) 555-1234" type="tel" />
-          <SelectField label="Team" value={form.team} onChange={set("team")} options={TEAMS} placeholder="Choose your team" />
+          <SelectField label="Team" value={form.team} onChange={(v) => {
+            setForm((f) => ({
+              ...f, team: v,
+              smallGroupName: (v === "small-group-guys" || v === "small-group-girls") && !f.smallGroupName && f.name
+                ? `${f.name.split(" ")[0]}'s Group` : f.smallGroupName,
+            }));
+          }} options={TEAMS} placeholder="Choose your team" />
           {form.team === "leadership" && (
             <SelectField label="Leadership role" value={form.leadershipRole} onChange={set("leadershipRole")}
               options={LEADERSHIP_ROLES.map((r) => ({ id: r, label: r }))} placeholder="Which role?" />
           )}
           {(form.team === "small-group-guys" || form.team === "small-group-girls") && (
-            <SelectField label="Grade" value={form.grade} onChange={set("grade")}
-              options={GRADES.map((g) => ({ id: g, label: g }))} placeholder="Which grade do you lead?" />
+            <>
+              <SelectField label="Grade" value={form.grade} onChange={set("grade")}
+                options={GRADES.map((g) => ({ id: g, label: g }))} placeholder="Which grade do you lead?" />
+              <TextField label="Your group's name" value={form.smallGroupName} onChange={set("smallGroupName")}
+                placeholder="e.g. Casey's Group" />
+            </>
           )}
           <div style={{ display: "flex", gap: 10 }}>
             <div style={{ flex: 1 }}>
@@ -1300,180 +1364,314 @@ export default function SwitchLeaderApp() {
     );
   }
 
+  function groupsForBucket(bucket) {
+    const explicit = smallGroups.filter((sg) => sg.teamId === bucket.teamId && sg.grade === bucket.grade);
+    const legacyStudents = students.filter((s) => s.groupId === bucket.id);
+    const legacyLeaders = roster.switch.filter((p) => p.teamId === bucket.teamId && p.grade === bucket.grade && !p.smallGroupId);
+    const hasLegacy = legacyStudents.length > 0 || legacyLeaders.length > 0;
+    const legacyEntry = hasLegacy ? [{ id: bucket.id, name: "Original Group", teamId: bucket.teamId, grade: bucket.grade, legacy: true }] : [];
+    return [...legacyEntry, ...explicit];
+  }
+
+  function leadersForSmallGroup(sg) {
+    if (sg.legacy) {
+      return roster.switch.filter((p) => p.teamId === sg.teamId && p.grade === sg.grade && !p.smallGroupId);
+    }
+    return roster.switch.filter((p) => p.smallGroupId === sg.id);
+  }
+
+  function performGroupMerge(selectedIds, survivorName, bucket) {
+    let survivorId = selectedIds.find((id) => smallGroups.some((sg) => sg.id === id));
+    if (!survivorId) {
+      survivorId = `sg-${Date.now()}`;
+      setSmallGroups((sgs) => [...sgs, { id: survivorId, name: survivorName, teamId: bucket.teamId, grade: bucket.grade }]);
+    } else {
+      setSmallGroups((sgs) => sgs
+        .filter((sg) => !selectedIds.includes(sg.id) || sg.id === survivorId)
+        .map((sg) => (sg.id === survivorId ? { ...sg, name: survivorName } : sg)));
+    }
+    setStudents((sts) => sts.map((s) => (selectedIds.includes(s.groupId) ? { ...s, groupId: survivorId } : s)));
+    setRoster((r) => ({
+      ...r,
+      switch: r.switch.map((p) => {
+        const matchesExplicit = p.smallGroupId && selectedIds.includes(p.smallGroupId);
+        const matchesLegacy = !p.smallGroupId && p.teamId === bucket.teamId && p.grade === bucket.grade && selectedIds.includes(bucket.id);
+        return (matchesExplicit || matchesLegacy) ? { ...p, smallGroupId: survivorId } : p;
+      }),
+    }));
+  }
+
   function StudentRosterTab() {
     if (studentGroupDetail) {
-      const group = STUDENT_GROUPS.find((g) => g.id === studentGroupDetail);
-      const groupStudents = students.filter((s) => s.groupId === studentGroupDetail);
-      const leaders = roster.switch.filter((p) => p.teamId === group.teamId && p.grade === group.grade);
-      const isMyGroup = leaders.some((l) => l.phone && form.phone && l.phone === form.phone);
-      const canManage = isAdmin || isMyGroup;
+      const bucket = STUDENT_GROUPS.find((g) => g.id === studentGroupDetail);
+
+      if (selectedSmallGroupId) {
+        const groupsHere = groupsForBucket(bucket);
+        const sg = groupsHere.find((g) => g.id === selectedSmallGroupId)
+          || { id: selectedSmallGroupId, name: bucket.label, teamId: bucket.teamId, grade: bucket.grade, legacy: true };
+        const groupStudents = students.filter((s) => s.groupId === selectedSmallGroupId);
+        const leaders = leadersForSmallGroup(sg);
+        const isMyGroup = leaders.some((l) => l.phone && form.phone && l.phone === form.phone);
+        const canManage = isAdmin || isMyGroup;
+        return (
+          <div style={{ padding: "18px 18px 8px" }}>
+            <button onClick={() => { setSelectedSmallGroupId(null); setExpandedStudent(null); setAddingStudent(false); setConfirmRemoveStudent(null); setTakingAttendance(false); }} style={{
+              background: "none", border: "none", color: MUTED, fontSize: 13, marginBottom: 12,
+              cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontFamily: "inherit",
+            }}><ArrowLeft size={14} /> Back</button>
+
+            <div style={{ fontWeight: 700, color: INK, fontSize: 18, marginBottom: 4 }}>{sg.name}</div>
+            <div style={{ fontSize: 13, color: MUTED, marginBottom: 16 }}>
+              {leaders.length > 0 ? `Led by ${leaders.map((l) => l.name).join(", ")}` : "No leader assigned yet"}
+            </div>
+
+            {canManage && groupStudents.length > 0 && !takingAttendance && (
+              <button onClick={() => {
+                const draft = {};
+                groupStudents.forEach((s) => { draft[s.id] = (s.attendance || []).includes(todayISO()); });
+                setAttendanceDraft(draft);
+                setTakingAttendance(true);
+              }} style={{
+                width: "100%", padding: "14px 0", borderRadius: 14, border: "none",
+                background: EMBER, color: EMBER_TEXT, fontWeight: 700, fontSize: 15,
+                cursor: "pointer", fontFamily: "inherit", marginBottom: 16,
+              }}>Take Attendance for Today</button>
+            )}
+
+            {canManage && takingAttendance && (
+              <Card>
+                <div style={{ fontWeight: 700, color: INK, marginBottom: 2 }}>Who's here today?</div>
+                <div style={{ fontSize: 12, color: MUTED, marginBottom: 14 }}>
+                  {new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
+                </div>
+                {groupStudents.map((s) => (
+                  <label key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", cursor: "pointer" }}>
+                    <input type="checkbox" checked={!!attendanceDraft[s.id]}
+                      onChange={(e) => setAttendanceDraft((d) => ({ ...d, [s.id]: e.target.checked }))} />
+                    <span style={{ fontSize: 14, color: INK }}>{s.name}</span>
+                  </label>
+                ))}
+                <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+                  <button onClick={() => setTakingAttendance(false)} style={{
+                    flex: 1, padding: "12px 0", borderRadius: 12, border: `1px solid ${INK}33`,
+                    background: "none", color: INK, fontWeight: 600, fontFamily: "inherit", cursor: "pointer",
+                  }}>Cancel</button>
+                  <button onClick={() => {
+                    const today = todayISO();
+                    setStudents(students.map((s) => {
+                      if (s.groupId !== selectedSmallGroupId) return s;
+                      const checked = !!attendanceDraft[s.id];
+                      const existing = s.attendance || [];
+                      const has = existing.includes(today);
+                      let attendance = existing;
+                      if (checked && !has) attendance = [...existing, today];
+                      else if (!checked && has) attendance = existing.filter((d) => d !== today);
+                      return { ...s, attendance };
+                    }));
+                    setTakingAttendance(false);
+                  }} style={{
+                    flex: 1, padding: "12px 0", borderRadius: 12, border: "none",
+                    background: EMBER, color: EMBER_TEXT, fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
+                  }}>Save attendance</button>
+                </div>
+              </Card>
+            )}
+
+            {groupStudents.length === 0 && (
+              <div style={{ fontSize: 13, color: MUTED, marginBottom: 14 }}>No students added to this group yet.</div>
+            )}
+            {groupStudents.map((s) => {
+              const isOpen = expandedStudent === s.id;
+              const daysSince = daysSinceLastAttended(s);
+              const dotColor = attendanceColor(daysSince);
+              return (
+                <Card key={s.id} style={{ padding: 0, overflow: "hidden" }}>
+                  <button onClick={() => setExpandedStudent(isOpen ? null : s.id)} style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: 12, background: "none",
+                    border: "none", cursor: "pointer", fontFamily: "inherit", padding: "14px 16px", textAlign: "left",
+                  }}>
+                    <div style={{ position: "relative", flexShrink: 0 }}>
+                      <div style={{
+                        width: 36, height: 36, borderRadius: 18, background: `${EMBER}44`,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 13, fontWeight: 600, color: INK,
+                      }}>{s.name.split(" ").map((n) => n[0]).slice(0, 2).join("")}</div>
+                      <div style={{
+                        position: "absolute", bottom: -2, right: -2, width: 12, height: 12, borderRadius: 6,
+                        background: dotColor, border: `2px solid ${SURFACE}`,
+                      }} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14, color: INK }}>{s.name}</div>
+                      <div style={{ fontSize: 12, color: MUTED }}>{s.studentPhone || "No cell on file"}</div>
+                    </div>
+                    <ChevronRight size={16} color={MUTED} style={{ transform: isOpen ? "rotate(90deg)" : "none" }} />
+                  </button>
+                  {isOpen && (
+                    <div style={{ padding: "0 16px 16px" }}>
+                      <div style={{ fontSize: 13, marginBottom: 10, color: dotColor, fontWeight: 600 }}>
+                        {attendanceLabel(daysSince)}
+                      </div>
+                      <div style={{ fontSize: 13, color: MUTED, marginBottom: 6 }}>
+                        Student cell: <span style={{ color: INK }}>{s.studentPhone || "—"}</span>
+                      </div>
+                      <div style={{ fontSize: 13, color: MUTED, marginBottom: canManage ? 12 : 0 }}>
+                        Parent: <span style={{ color: INK }}>{s.parentName || "—"}</span>
+                        {s.parentPhone && <span style={{ color: INK }}> · {s.parentPhone}</span>}
+                      </div>
+                      {canManage && confirmRemoveStudent !== s.id && (
+                        <button onClick={() => setConfirmRemoveStudent(s.id)} style={{
+                          marginTop: 12, background: "none", border: "none", color: CORAL, fontSize: 13,
+                          fontWeight: 600, cursor: "pointer", fontFamily: "inherit", padding: 0,
+                        }}>Remove student</button>
+                      )}
+                      {canManage && confirmRemoveStudent === s.id && (
+                        <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${INK}14` }}>
+                          <div style={{ fontSize: 13, color: INK, marginBottom: 10 }}>Remove {s.name} from this group?</div>
+                          <div style={{ display: "flex", gap: 10 }}>
+                            <button onClick={() => setConfirmRemoveStudent(null)} style={{
+                              flex: 1, padding: "10px 0", borderRadius: 10, border: `1px solid ${INK}33`,
+                              background: "none", color: INK, fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit",
+                            }}>Cancel</button>
+                            <button onClick={() => {
+                              setStudents(students.filter((st) => st.id !== s.id));
+                              setConfirmRemoveStudent(null);
+                              setExpandedStudent(null);
+                            }} style={{
+                              flex: 1, padding: "10px 0", borderRadius: 10, border: "none",
+                              background: CORAL, color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit",
+                            }}>Remove</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+
+            {canManage && !addingStudent && (
+              <button onClick={() => setAddingStudent(true)} style={{
+                width: "100%", padding: "14px 0", borderRadius: 14, border: `1px dashed ${INK}33`,
+                background: SURFACE, color: INK, fontWeight: 700, fontSize: 15, cursor: "pointer", fontFamily: "inherit",
+              }}>+ Add a student</button>
+            )}
+            {canManage && addingStudent && (
+              <Card>
+                <TextField label="Student name" value={studentDraft.name} onChange={(v) => setStudentDraft((d) => ({ ...d, name: v }))} placeholder="First and last name" />
+                <TextField label="Student cell phone" value={studentDraft.studentPhone} onChange={(v) => setStudentDraft((d) => ({ ...d, studentPhone: v }))} placeholder="(405) 555-1234" type="tel" />
+                <TextField label="Parent name" value={studentDraft.parentName} onChange={(v) => setStudentDraft((d) => ({ ...d, parentName: v }))} placeholder="First and last name" />
+                <TextField label="Parent cell phone" value={studentDraft.parentPhone} onChange={(v) => setStudentDraft((d) => ({ ...d, parentPhone: v }))} placeholder="(405) 555-1234" type="tel" />
+                <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+                  <button onClick={() => { setAddingStudent(false); setStudentDraft({ name: "", studentPhone: "", parentName: "", parentPhone: "" }); }} style={{
+                    flex: 1, padding: "12px 0", borderRadius: 12, border: `1px solid ${INK}33`,
+                    background: "none", color: INK, fontWeight: 600, fontFamily: "inherit", cursor: "pointer",
+                  }}>Cancel</button>
+                  <button onClick={() => {
+                    if (!studentDraft.name.trim()) return;
+                    setStudents([...students, {
+                      id: `s-${Date.now()}`, name: studentDraft.name, grade: bucket.grade,
+                      studentPhone: studentDraft.studentPhone, parentName: studentDraft.parentName,
+                      parentPhone: studentDraft.parentPhone, groupId: selectedSmallGroupId, attendance: [],
+                    }]);
+                    setStudentDraft({ name: "", studentPhone: "", parentName: "", parentPhone: "" });
+                    setAddingStudent(false);
+                  }} style={{
+                    flex: 1, padding: "12px 0", borderRadius: 12, border: "none",
+                    background: EMBER, color: EMBER_TEXT, fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
+                  }}>Save</button>
+                </div>
+              </Card>
+            )}
+          </div>
+        );
+      }
+
+      // Middle level: the actual small groups that exist within this grade/gender bucket
+      const groupsHere = groupsForBucket(bucket);
       return (
         <div style={{ padding: "18px 18px 8px" }}>
-          <button onClick={() => { setStudentGroupDetail(null); setExpandedStudent(null); setAddingStudent(false); setConfirmRemoveStudent(null); setTakingAttendance(false); }} style={{
+          <button onClick={() => { setStudentGroupDetail(null); setCombiningGroups(false); setCombineSelection([]); setShowCombineNameStep(false); }} style={{
             background: "none", border: "none", color: MUTED, fontSize: 13, marginBottom: 12,
             cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontFamily: "inherit",
           }}><ArrowLeft size={14} /> Back</button>
 
-          <div style={{ fontWeight: 700, color: INK, fontSize: 18, marginBottom: 4 }}>{group.label}</div>
-          <div style={{ fontSize: 13, color: MUTED, marginBottom: 16 }}>
-            {leaders.length > 0 ? `Led by ${leaders.map((l) => l.name).join(", ")}` : "No leader assigned yet"}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <div style={{ fontWeight: 700, color: INK, fontSize: 18 }}>{bucket.label}</div>
+            {isAdmin && groupsHere.length >= 1 && !showCombineNameStep && (
+              <button onClick={() => { setCombiningGroups(!combiningGroups); setCombineSelection([]); }} style={{
+                background: "none", border: "none", color: combiningGroups ? CORAL : MUTED, fontSize: 13,
+                fontWeight: 600, cursor: "pointer", fontFamily: "inherit", padding: 0,
+              }}>{combiningGroups ? "Cancel" : "Manage Groups"}</button>
+            )}
           </div>
 
-          {canManage && groupStudents.length > 0 && !takingAttendance && (
-            <button onClick={() => {
-              const draft = {};
-              groupStudents.forEach((s) => { draft[s.id] = (s.attendance || []).includes(todayISO()); });
-              setAttendanceDraft(draft);
-              setTakingAttendance(true);
-            }} style={{
-              width: "100%", padding: "14px 0", borderRadius: 14, border: "none",
-              background: EMBER, color: EMBER_TEXT, fontWeight: 700, fontSize: 15,
-              cursor: "pointer", fontFamily: "inherit", marginBottom: 16,
-            }}>Take Attendance for Today</button>
+          {groupsHere.length === 0 && (
+            <div style={{ fontSize: 13, color: MUTED, marginBottom: 14 }}>No small groups here yet — they'll show up once a leader fills out their Leader Profile for this grade.</div>
           )}
 
-          {canManage && takingAttendance && (
-            <Card>
-              <div style={{ fontWeight: 700, color: INK, marginBottom: 2 }}>Who's here today?</div>
-              <div style={{ fontSize: 12, color: MUTED, marginBottom: 14 }}>
-                {new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
-              </div>
-              {groupStudents.map((s) => (
-                <label key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", cursor: "pointer" }}>
-                  <input type="checkbox" checked={!!attendanceDraft[s.id]}
-                    onChange={(e) => setAttendanceDraft((d) => ({ ...d, [s.id]: e.target.checked }))} />
-                  <span style={{ fontSize: 14, color: INK }}>{s.name}</span>
-                </label>
-              ))}
-              <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-                <button onClick={() => setTakingAttendance(false)} style={{
-                  flex: 1, padding: "12px 0", borderRadius: 12, border: `1px solid ${INK}33`,
-                  background: "none", color: INK, fontWeight: 600, fontFamily: "inherit", cursor: "pointer",
-                }}>Cancel</button>
-                <button onClick={() => {
-                  const today = todayISO();
-                  setStudents(students.map((s) => {
-                    if (s.groupId !== studentGroupDetail) return s;
-                    const checked = !!attendanceDraft[s.id];
-                    const existing = s.attendance || [];
-                    const has = existing.includes(today);
-                    let attendance = existing;
-                    if (checked && !has) attendance = [...existing, today];
-                    else if (!checked && has) attendance = existing.filter((d) => d !== today);
-                    return { ...s, attendance };
-                  }));
-                  setTakingAttendance(false);
-                }} style={{
-                  flex: 1, padding: "12px 0", borderRadius: 12, border: "none",
-                  background: EMBER, color: EMBER_TEXT, fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
-                }}>Save attendance</button>
-              </div>
-            </Card>
-          )}
-
-          {groupStudents.length === 0 && (
-            <div style={{ fontSize: 13, color: MUTED, marginBottom: 14 }}>No students added to this group yet.</div>
-          )}
-          {groupStudents.map((s) => {
-            const isOpen = expandedStudent === s.id;
-            const daysSince = daysSinceLastAttended(s);
-            const dotColor = attendanceColor(daysSince);
+          {groupsHere.map((sg) => {
+            const leaders = leadersForSmallGroup(sg);
+            const count = students.filter((s) => s.groupId === sg.id).length;
+            const selected = combineSelection.includes(sg.id);
             return (
-              <Card key={s.id} style={{ padding: 0, overflow: "hidden" }}>
-                <button onClick={() => setExpandedStudent(isOpen ? null : s.id)} style={{
-                  width: "100%", display: "flex", alignItems: "center", gap: 12, background: "none",
-                  border: "none", cursor: "pointer", fontFamily: "inherit", padding: "14px 16px", textAlign: "left",
-                }}>
-                  <div style={{ position: "relative", flexShrink: 0 }}>
-                    <div style={{
-                      width: 36, height: 36, borderRadius: 18, background: `${EMBER}44`,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: 13, fontWeight: 600, color: INK,
-                    }}>{s.name.split(" ").map((n) => n[0]).slice(0, 2).join("")}</div>
-                    <div style={{
-                      position: "absolute", bottom: -2, right: -2, width: 12, height: 12, borderRadius: 6,
-                      background: dotColor, border: `2px solid ${SURFACE}`,
+              <button key={sg.id} onClick={() => {
+                if (combiningGroups) {
+                  setCombineSelection((sel) => selected ? sel.filter((id) => id !== sg.id) : [...sel, sg.id]);
+                } else {
+                  setSelectedSmallGroupId(sg.id);
+                }
+              }} style={{
+                width: "100%", display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between",
+                background: SURFACE, border: selected ? `2px solid ${EMBER}` : `1px solid ${INK}14`, borderRadius: 14,
+                padding: "14px 18px", marginBottom: 10, cursor: "pointer", fontFamily: "inherit", textAlign: "left",
+              }}>
+                <div>
+                  <div style={{ fontWeight: 700, color: INK, fontSize: 15 }}>{sg.name}</div>
+                  <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
+                    {leaders.length > 0 ? `Led by ${leaders.map((l) => l.name).join(", ")}` : "No leader"} · {count} student{count !== 1 ? "s" : ""}
+                  </div>
+                </div>
+                {combiningGroups
+                  ? <div style={{
+                      width: 20, height: 20, borderRadius: 10, flexShrink: 0,
+                      border: `2px solid ${selected ? EMBER : INK + "55"}`, background: selected ? EMBER : "transparent",
                     }} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, color: INK }}>{s.name}</div>
-                    <div style={{ fontSize: 12, color: MUTED }}>{s.studentPhone || "No cell on file"}</div>
-                  </div>
-                  <ChevronRight size={16} color={MUTED} style={{ transform: isOpen ? "rotate(90deg)" : "none" }} />
-                </button>
-                {isOpen && (
-                  <div style={{ padding: "0 16px 16px" }}>
-                    <div style={{ fontSize: 13, marginBottom: 10, color: dotColor, fontWeight: 600 }}>
-                      {attendanceLabel(daysSince)}
-                    </div>
-                    <div style={{ fontSize: 13, color: MUTED, marginBottom: 6 }}>
-                      Student cell: <span style={{ color: INK }}>{s.studentPhone || "—"}</span>
-                    </div>
-                    <div style={{ fontSize: 13, color: MUTED, marginBottom: canManage ? 12 : 0 }}>
-                      Parent: <span style={{ color: INK }}>{s.parentName || "—"}</span>
-                      {s.parentPhone && <span style={{ color: INK }}> · {s.parentPhone}</span>}
-                    </div>
-                    {canManage && confirmRemoveStudent !== s.id && (
-                      <button onClick={() => setConfirmRemoveStudent(s.id)} style={{
-                        marginTop: 12, background: "none", border: "none", color: CORAL, fontSize: 13,
-                        fontWeight: 600, cursor: "pointer", fontFamily: "inherit", padding: 0,
-                      }}>Remove student</button>
-                    )}
-                    {canManage && confirmRemoveStudent === s.id && (
-                      <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${INK}14` }}>
-                        <div style={{ fontSize: 13, color: INK, marginBottom: 10 }}>Remove {s.name} from this group?</div>
-                        <div style={{ display: "flex", gap: 10 }}>
-                          <button onClick={() => setConfirmRemoveStudent(null)} style={{
-                            flex: 1, padding: "10px 0", borderRadius: 10, border: `1px solid ${INK}33`,
-                            background: "none", color: INK, fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit",
-                          }}>Cancel</button>
-                          <button onClick={() => {
-                            setStudents(students.filter((st) => st.id !== s.id));
-                            setConfirmRemoveStudent(null);
-                            setExpandedStudent(null);
-                          }} style={{
-                            flex: 1, padding: "10px 0", borderRadius: 10, border: "none",
-                            background: CORAL, color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit",
-                          }}>Remove</button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </Card>
+                  : <ChevronRight size={16} color={MUTED} />}
+              </button>
             );
           })}
 
-          {canManage && !addingStudent && (
-            <button onClick={() => setAddingStudent(true)} style={{
-              width: "100%", padding: "14px 0", borderRadius: 14, border: `1px dashed ${INK}33`,
-              background: SURFACE, color: INK, fontWeight: 700, fontSize: 15, cursor: "pointer", fontFamily: "inherit",
-            }}>+ Add a student</button>
+          {combiningGroups && combineSelection.length >= 1 && !showCombineNameStep && (
+            <button onClick={() => {
+              const first = groupsHere.find((g) => g.id === combineSelection[0]);
+              setCombineName(first ? first.name : "Combined Group");
+              setShowCombineNameStep(true);
+            }} style={{
+              width: "100%", padding: "14px 0", borderRadius: 14, border: "none",
+              background: EMBER, color: EMBER_TEXT, fontWeight: 700, fontSize: 15, cursor: "pointer", fontFamily: "inherit",
+            }}>
+              {combineSelection.length === 1 ? "Rename Selected Group" : `Combine ${combineSelection.length} Selected Groups`}
+            </button>
           )}
-          {canManage && addingStudent && (
+
+          {showCombineNameStep && (
             <Card>
-              <TextField label="Student name" value={studentDraft.name} onChange={(v) => setStudentDraft((d) => ({ ...d, name: v }))} placeholder="First and last name" />
-              <TextField label="Student cell phone" value={studentDraft.studentPhone} onChange={(v) => setStudentDraft((d) => ({ ...d, studentPhone: v }))} placeholder="(405) 555-1234" type="tel" />
-              <TextField label="Parent name" value={studentDraft.parentName} onChange={(v) => setStudentDraft((d) => ({ ...d, parentName: v }))} placeholder="First and last name" />
-              <TextField label="Parent cell phone" value={studentDraft.parentPhone} onChange={(v) => setStudentDraft((d) => ({ ...d, parentPhone: v }))} placeholder="(405) 555-1234" type="tel" />
+              <TextField label={combineSelection.length === 1 ? "Group name" : "Combined group name"} value={combineName} onChange={setCombineName} placeholder="e.g. Kate's Group" />
               <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
-                <button onClick={() => { setAddingStudent(false); setStudentDraft({ name: "", studentPhone: "", parentName: "", parentPhone: "" }); }} style={{
+                <button onClick={() => setShowCombineNameStep(false)} style={{
                   flex: 1, padding: "12px 0", borderRadius: 12, border: `1px solid ${INK}33`,
                   background: "none", color: INK, fontWeight: 600, fontFamily: "inherit", cursor: "pointer",
                 }}>Cancel</button>
                 <button onClick={() => {
-                  if (!studentDraft.name.trim()) return;
-                  setStudents([...students, {
-                    id: `s-${Date.now()}`, name: studentDraft.name, grade: group.grade,
-                    studentPhone: studentDraft.studentPhone, parentName: studentDraft.parentName,
-                    parentPhone: studentDraft.parentPhone, groupId: studentGroupDetail, attendance: [],
-                  }]);
-                  setStudentDraft({ name: "", studentPhone: "", parentName: "", parentPhone: "" });
-                  setAddingStudent(false);
+                  performGroupMerge(combineSelection, combineName.trim() || "Combined Group", bucket);
+                  setCombiningGroups(false);
+                  setCombineSelection([]);
+                  setShowCombineNameStep(false);
                 }} style={{
                   flex: 1, padding: "12px 0", borderRadius: 12, border: "none",
                   background: EMBER, color: EMBER_TEXT, fontWeight: 700, fontFamily: "inherit", cursor: "pointer",
-                }}>Save</button>
+                }}>Confirm Merge</button>
               </div>
             </Card>
           )}
@@ -1483,12 +1681,13 @@ export default function SwitchLeaderApp() {
 
     return (
       <div style={{ padding: "18px 18px 8px" }}>
-        <div style={{ fontSize: 12, color: MUTED, marginBottom: 16 }}>Tap a grade to see that group's roster.</div>
+        <div style={{ fontSize: 12, color: MUTED, marginBottom: 16 }}>Tap a grade to see its small groups.</div>
         {STUDENT_GENDERS.map((g) => (
           <div key={g.id} style={{ marginBottom: 20 }}>
             <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", color: MUTED, marginBottom: 10 }}>{g.label.toUpperCase()}</div>
             {STUDENT_GROUPS.filter((grp) => grp.genderId === g.id).map((grp) => {
-              const count = students.filter((s) => s.groupId === grp.id).length;
+              const groupsHere = groupsForBucket(grp);
+              const count = groupsHere.reduce((sum, sg) => sum + students.filter((s) => s.groupId === sg.id).length, 0);
               return (
                 <button key={grp.id} onClick={() => setStudentGroupDetail(grp.id)} style={{
                   width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center",
