@@ -439,7 +439,7 @@ export default function SwitchLeaderApp() {
   const announcementsWrittenAt = useRef(0);
   const smallGroupsWrittenAt = useRef(0);
   const eventGuidesWrittenAt = useRef(0);
-  const RECENT_WRITE_GUARD_MS = 10000;
+  const RECENT_WRITE_GUARD_MS = 30000;
   const skipAnnouncementsSync = useRef(false);
   const [roster, setRoster] = useState({
     leadership: [...LEADERSHIP_TEAM],
@@ -524,14 +524,18 @@ export default function SwitchLeaderApp() {
       ]);
       const now = Date.now();
       const recent = (writtenAtRef) => now - writtenAtRef.current < RECENT_WRITE_GUARD_MS;
-      if (hasContent(r) && !recent(rosterWrittenAt)) { skipRosterSync.current = true; setRoster(r); }
-      if (hasContent(s) && !recent(studentsWrittenAt)) { skipStudentsSync.current = true; setStudents(s); }
-      if (hasContent(p) && !recent(postsWrittenAt)) { skipPostsSync.current = true; setPosts(p); }
-      if (hasContent(pr) && !recent(prayerWrittenAt)) { skipPrayerSync.current = true; setPrayerRequests(pr); }
-      if (hasContent(c) && !recent(celebrationsWrittenAt)) { skipCelebrationsSync.current = true; setCelebrations(c); }
-      if (hasContent(a) && !recent(announcementsWrittenAt)) { skipAnnouncementsSync.current = true; setAnnouncements(a); }
-      if (hasContent(eg) && !recent(eventGuidesWrittenAt)) { skipEventGuidesSync.current = true; setEventGuides(eg); }
-      if (hasContent(sg) && !recent(smallGroupsWrittenAt)) { skipSmallGroupsSync.current = true; setSmallGroups(sg); }
+      // Unlike the very first load, we no longer require "real content" here — by this point
+      // the device has already synced once, so an empty result is trusted as a genuine delete,
+      // not mistaken for "the backend just isn't ready yet." The recent-write guard above is
+      // what actually protects against overwriting a change this device just made itself.
+      if (r !== undefined && !recent(rosterWrittenAt)) { skipRosterSync.current = true; setRoster(r || { leadership: [], switch: [] }); }
+      if (s !== undefined && !recent(studentsWrittenAt)) { skipStudentsSync.current = true; setStudents(s || []); }
+      if (p !== undefined && !recent(postsWrittenAt)) { skipPostsSync.current = true; setPosts(p || []); }
+      if (pr !== undefined && !recent(prayerWrittenAt)) { skipPrayerSync.current = true; setPrayerRequests(pr || []); }
+      if (c !== undefined && !recent(celebrationsWrittenAt)) { skipCelebrationsSync.current = true; setCelebrations(c || []); }
+      if (a !== undefined && !recent(announcementsWrittenAt)) { skipAnnouncementsSync.current = true; setAnnouncements(a || []); }
+      if (eg !== undefined && !recent(eventGuidesWrittenAt)) { skipEventGuidesSync.current = true; setEventGuides(eg || {}); }
+      if (sg !== undefined && !recent(smallGroupsWrittenAt)) { skipSmallGroupsSync.current = true; setSmallGroups(sg || []); }
     }, 20000);
     return () => clearInterval(interval);
   }, [checkedStorage]);
