@@ -9,6 +9,7 @@ const ALLOWED_KEYS = new Set([
   "celebrations",
   "announcements",
   "smallGroups",
+  "eventGuides",
 ]);
 
 const CORS_HEADERS = {
