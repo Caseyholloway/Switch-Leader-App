@@ -1024,6 +1024,25 @@ export default function SwitchLeaderApp() {
       return d && d >= todayMidnight;
     }) || SCHEDULE[SCHEDULE.length - 1];
 
+    const allLeaderEntries = [...roster.leadership, ...roster.switch];
+    const myEntry = allLeaderEntries.find((p) => p.phone && form.phone && p.phone === form.phone);
+    const amConfirmed = myEntry && myEntry.confirmedDate === upcomingEvent.date;
+    const confirmedCount = allLeaderEntries.filter((p) => p.confirmedDate === upcomingEvent.date).length;
+
+    function toggleMyConfirmation() {
+      const dateKey = upcomingEvent.date;
+      setRoster((r) => {
+        const updateList = (list) => list.map((p) => {
+          if (p.phone && form.phone && p.phone === form.phone) {
+            const isConfirmed = p.confirmedDate === dateKey;
+            return { ...p, confirmedDate: isConfirmed ? null : dateKey };
+          }
+          return p;
+        });
+        return { leadership: updateList(r.leadership), switch: updateList(r.switch) };
+      });
+    }
+
     return (
       <div style={{ padding: "18px 18px 8px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, gap: 10 }}>
@@ -1122,6 +1141,35 @@ export default function SwitchLeaderApp() {
             </div>
           </div>
         </Card>
+
+        {myEntry && (
+          <button onClick={toggleMyConfirmation} style={{
+            width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            padding: "14px 0", borderRadius: 14, border: amConfirmed ? "none" : `1px solid ${INK}33`,
+            background: amConfirmed ? EMBER : SURFACE, color: amConfirmed ? EMBER_TEXT : INK,
+            fontWeight: 700, fontSize: 15, cursor: "pointer", fontFamily: "inherit", marginBottom: 18,
+          }}>
+            {amConfirmed ? `✅ You're confirmed for ${upcomingEvent.date}` : "I'll be there this week"}
+          </button>
+        )}
+
+        {isAdmin && (
+          <Card>
+            <div style={{ fontWeight: 700, color: INK, marginBottom: 10 }}>
+              {confirmedCount} of {allLeaderEntries.length} confirmed for {upcomingEvent.date}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {allLeaderEntries.map((p) => (
+                <div key={p.phone || p.name} style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                  <span style={{ color: INK }}>{p.name}</span>
+                  <span style={{ color: p.confirmedDate === upcomingEvent.date ? ATTEND_GREEN : MUTED, fontWeight: 600 }}>
+                    {p.confirmedDate === upcomingEvent.date ? "Confirmed" : "Not yet"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
 
         <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.1em", color: MUTED, margin: "18px 0 10px" }}>BIRTHDAYS THIS WEEK</div>
         {thisWeekBirthdays.length === 0 && (
