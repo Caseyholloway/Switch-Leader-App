@@ -427,6 +427,7 @@ export default function SwitchLeaderApp() {
   const skipPrayerSync = useRef(false);
   const skipCelebrationsSync = useRef(false);
   const skipSmallGroupsSync = useRef(false);
+  const skipEventGuidesSync = useRef(false);
   // Tracks when this device last pushed its own change for each dataset, so a
   // background check-in that happens right after can be ignored if it looks
   // like it might be a split-second-stale copy of the shared storage.
@@ -437,6 +438,7 @@ export default function SwitchLeaderApp() {
   const celebrationsWrittenAt = useRef(0);
   const announcementsWrittenAt = useRef(0);
   const smallGroupsWrittenAt = useRef(0);
+  const eventGuidesWrittenAt = useRef(0);
   const RECENT_WRITE_GUARD_MS = 10000;
   const skipAnnouncementsSync = useRef(false);
   const [roster, setRoster] = useState({
@@ -496,9 +498,9 @@ export default function SwitchLeaderApp() {
     // Pull the shared, server-side copy if it's available (once the backend is deployed).
     // Falls back to whatever was just loaded from this device if the server has nothing yet.
     (async () => {
-      const [r, s, p, pr, c, a, sg] = await Promise.all([
+      const [r, s, p, pr, c, a, sg, eg] = await Promise.all([
         apiGet("roster"), apiGet("students"), apiGet("posts"),
-        apiGet("prayerRequests"), apiGet("celebrations"), apiGet("announcements"), apiGet("smallGroups"),
+        apiGet("prayerRequests"), apiGet("celebrations"), apiGet("announcements"), apiGet("smallGroups"), apiGet("eventGuides"),
       ]);
       if (hasContent(r)) { skipRosterSync.current = true; setRoster(r); }
       if (hasContent(s)) { skipStudentsSync.current = true; setStudents(s); }
@@ -507,6 +509,7 @@ export default function SwitchLeaderApp() {
       if (hasContent(c)) { skipCelebrationsSync.current = true; setCelebrations(c); }
       if (hasContent(a)) { skipAnnouncementsSync.current = true; setAnnouncements(a); }
       if (hasContent(sg)) { skipSmallGroupsSync.current = true; setSmallGroups(sg); }
+      if (hasContent(eg)) { skipEventGuidesSync.current = true; setEventGuides(eg); }
       setCheckedStorage(true);
     })();
   }, []);
@@ -515,9 +518,9 @@ export default function SwitchLeaderApp() {
   useEffect(() => {
     if (!checkedStorage) return;
     const interval = setInterval(async () => {
-      const [r, s, p, pr, c, a, sg] = await Promise.all([
+      const [r, s, p, pr, c, a, sg, eg] = await Promise.all([
         apiGet("roster"), apiGet("students"), apiGet("posts"),
-        apiGet("prayerRequests"), apiGet("celebrations"), apiGet("announcements"), apiGet("smallGroups"),
+        apiGet("prayerRequests"), apiGet("celebrations"), apiGet("announcements"), apiGet("smallGroups"), apiGet("eventGuides"),
       ]);
       const now = Date.now();
       const recent = (writtenAtRef) => now - writtenAtRef.current < RECENT_WRITE_GUARD_MS;
@@ -527,6 +530,7 @@ export default function SwitchLeaderApp() {
       if (hasContent(pr) && !recent(prayerWrittenAt)) { skipPrayerSync.current = true; setPrayerRequests(pr); }
       if (hasContent(c) && !recent(celebrationsWrittenAt)) { skipCelebrationsSync.current = true; setCelebrations(c); }
       if (hasContent(a) && !recent(announcementsWrittenAt)) { skipAnnouncementsSync.current = true; setAnnouncements(a); }
+      if (hasContent(eg) && !recent(eventGuidesWrittenAt)) { skipEventGuidesSync.current = true; setEventGuides(eg); }
       if (hasContent(sg) && !recent(smallGroupsWrittenAt)) { skipSmallGroupsSync.current = true; setSmallGroups(sg); }
     }, 20000);
     return () => clearInterval(interval);
@@ -551,6 +555,9 @@ export default function SwitchLeaderApp() {
     } catch (e) {
       // storage unavailable — guide list won't survive a refresh
     }
+    if (skipEventGuidesSync.current) { skipEventGuidesSync.current = false; return; }
+    eventGuidesWrittenAt.current = Date.now();
+    apiSet("eventGuides", eventGuides);
   }, [eventGuides, checkedStorage]);
 
   useEffect(() => {
@@ -703,6 +710,7 @@ export default function SwitchLeaderApp() {
     apiSet("prayerRequests", []);
     apiSet("celebrations", []);
     apiSet("smallGroups", []);
+    apiSet("eventGuides", {});
   }
 
   function resetDevice() {
@@ -1010,12 +1018,6 @@ export default function SwitchLeaderApp() {
   }
 
   function HomeTab() {
-    const notifCards = [
-      { id: "home-screen", emoji: "📲", label: "Add to Your Home Screen" },
-      !form.notifications && { id: "alerts", emoji: "🔔", label: "Turn on Switch Alerts" },
-      { id: "profile", emoji: "👤", label: "Set Up Your Profile" },
-    ].filter(Boolean);
-
     const now = new Date();
     const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const currentMonthAbbr = MONTHS[now.getMonth()];
@@ -1097,31 +1099,6 @@ export default function SwitchLeaderApp() {
           </div>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 22 }}>
-          {notifCards.map((c) => (
-            <button key={c.id} onClick={() => {
-              if (c.id === "alerts") {
-                set("notifications")(true);
-                try {
-                  window.localStorage.setItem("switchLeaderProfile", JSON.stringify({ ...form, notifications: true }));
-                } catch (e) {}
-              } else if (c.id === "home-screen") {
-                setShowAddHome(true);
-              } else if (c.id === "profile") {
-                setTab("editProfile");
-              }
-            }} style={{
-              width: "100%", display: "flex", alignItems: "center", gap: 14,
-              background: SURFACE, border: "none", borderRadius: 16, padding: "16px 18px",
-              cursor: "pointer", fontFamily: "inherit", textAlign: "left",
-            }}>
-              <span style={{ fontSize: 20 }}>{c.emoji}</span>
-              <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: INK }}>{c.label}</span>
-              <ChevronRight size={18} color={MUTED} />
-            </button>
-          ))}
-        </div>
-
         {(announcements.length > 0 || isAdmin) && (
           <>
             <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.1em", color: MUTED, marginBottom: 10 }}>ANNOUNCEMENTS</div>
@@ -1178,6 +1155,39 @@ export default function SwitchLeaderApp() {
             </div>
           </div>
         </Card>
+
+        {(eventGuides[upcomingEvent.date] || []).length > 0 && (
+          <Card>
+            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", color: MUTED, marginBottom: 10 }}>LEADER GUIDES</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {(eventGuides[upcomingEvent.date] || []).map((g, i) => {
+                const isLegacy = typeof g === "string";
+                const name = isLegacy ? g : g.name;
+                return (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <BookOpen size={16} color={MUTED} />
+                    {isLegacy ? (
+                      <span style={{ flex: 1, fontSize: 14, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {name} <span style={{ fontSize: 11 }}>(needs re-upload)</span>
+                      </span>
+                    ) : g.dataUrl.startsWith("data:image/") ? (
+                      <button onClick={() => setViewingImage(g)} style={{
+                        flex: 1, fontSize: 14, color: INK, overflow: "hidden", textOverflow: "ellipsis",
+                        whiteSpace: "nowrap", textAlign: "left", background: "none", border: "none",
+                        padding: 0, cursor: "pointer", fontFamily: "inherit",
+                      }}>{name}</button>
+                    ) : (
+                      <a href={g.dataUrl} target="_blank" rel="noopener noreferrer" style={{
+                        flex: 1, fontSize: 14, color: INK, overflow: "hidden", textOverflow: "ellipsis",
+                        whiteSpace: "nowrap", textDecoration: "none",
+                      }}>{name}</a>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        )}
 
         {myEntry && (
           <button onClick={toggleMyConfirmation} style={{
@@ -2159,6 +2169,12 @@ export default function SwitchLeaderApp() {
   }
 
   function ResourcesTab() {
+    const notifCards = [
+      { id: "home-screen", emoji: "📲", label: "Add to Your Home Screen" },
+      !form.notifications && { id: "alerts", emoji: "🔔", label: "Turn on Switch Alerts" },
+      { id: "profile", emoji: "👤", label: "Set Up Your Profile" },
+    ].filter(Boolean);
+
     return (
       <div style={{ padding: "18px 18px 8px" }}>
         <div style={{ display: "flex", gap: 6, background: SURFACE, borderRadius: 12, padding: 4, marginBottom: 16 }}>
@@ -2177,6 +2193,33 @@ export default function SwitchLeaderApp() {
 
         {resourcesSubTab === "links" && (
           <>
+            {notifCards.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
+                {notifCards.map((c) => (
+                  <button key={c.id} onClick={() => {
+                    if (c.id === "alerts") {
+                      set("notifications")(true);
+                      try {
+                        window.localStorage.setItem("switchLeaderProfile", JSON.stringify({ ...form, notifications: true }));
+                      } catch (e) {}
+                    } else if (c.id === "home-screen") {
+                      setShowAddHome(true);
+                    } else if (c.id === "profile") {
+                      setTab("editProfile");
+                    }
+                  }} style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: 14,
+                    background: SURFACE, border: "none", borderRadius: 16, padding: "16px 18px",
+                    cursor: "pointer", fontFamily: "inherit", textAlign: "left",
+                  }}>
+                    <span style={{ fontSize: 20 }}>{c.emoji}</span>
+                    <span style={{ flex: 1, fontSize: 16, fontWeight: 700, color: INK }}>{c.label}</span>
+                    <ChevronRight size={18} color={MUTED} />
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>Leader essentials</div>
             <Card>
               {RESOURCES_ESSENTIAL.map((r, i) => (
