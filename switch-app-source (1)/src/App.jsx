@@ -175,6 +175,23 @@ function parseScheduleDate(dateStr, year) {
   return new Date(year, monthIndex, day);
 }
 
+function relativeTime(timestamp) {
+  const diffSec = Math.floor((Date.now() - timestamp) / 1000);
+  if (diffSec < 60) return "just now";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  return `${diffDay}d ago`;
+}
+
+// Prefers a real stored timestamp so the label actually counts up over time.
+// Falls back to the old frozen label for anything created before this fix.
+function displayTime(entry) {
+  return entry.createdAt ? relativeTime(entry.createdAt) : entry.time;
+}
+
 function todayISO() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -410,6 +427,17 @@ export default function SwitchLeaderApp() {
   const skipPrayerSync = useRef(false);
   const skipCelebrationsSync = useRef(false);
   const skipSmallGroupsSync = useRef(false);
+  // Tracks when this device last pushed its own change for each dataset, so a
+  // background check-in that happens right after can be ignored if it looks
+  // like it might be a split-second-stale copy of the shared storage.
+  const rosterWrittenAt = useRef(0);
+  const studentsWrittenAt = useRef(0);
+  const postsWrittenAt = useRef(0);
+  const prayerWrittenAt = useRef(0);
+  const celebrationsWrittenAt = useRef(0);
+  const announcementsWrittenAt = useRef(0);
+  const smallGroupsWrittenAt = useRef(0);
+  const RECENT_WRITE_GUARD_MS = 10000;
   const skipAnnouncementsSync = useRef(false);
   const [roster, setRoster] = useState({
     leadership: [...LEADERSHIP_TEAM],
@@ -491,13 +519,15 @@ export default function SwitchLeaderApp() {
         apiGet("roster"), apiGet("students"), apiGet("posts"),
         apiGet("prayerRequests"), apiGet("celebrations"), apiGet("announcements"), apiGet("smallGroups"),
       ]);
-      if (hasContent(r)) { skipRosterSync.current = true; setRoster(r); }
-      if (hasContent(s)) { skipStudentsSync.current = true; setStudents(s); }
-      if (hasContent(p)) { skipPostsSync.current = true; setPosts(p); }
-      if (hasContent(pr)) { skipPrayerSync.current = true; setPrayerRequests(pr); }
-      if (hasContent(c)) { skipCelebrationsSync.current = true; setCelebrations(c); }
-      if (hasContent(a)) { skipAnnouncementsSync.current = true; setAnnouncements(a); }
-      if (hasContent(sg)) { skipSmallGroupsSync.current = true; setSmallGroups(sg); }
+      const now = Date.now();
+      const recent = (writtenAtRef) => now - writtenAtRef.current < RECENT_WRITE_GUARD_MS;
+      if (hasContent(r) && !recent(rosterWrittenAt)) { skipRosterSync.current = true; setRoster(r); }
+      if (hasContent(s) && !recent(studentsWrittenAt)) { skipStudentsSync.current = true; setStudents(s); }
+      if (hasContent(p) && !recent(postsWrittenAt)) { skipPostsSync.current = true; setPosts(p); }
+      if (hasContent(pr) && !recent(prayerWrittenAt)) { skipPrayerSync.current = true; setPrayerRequests(pr); }
+      if (hasContent(c) && !recent(celebrationsWrittenAt)) { skipCelebrationsSync.current = true; setCelebrations(c); }
+      if (hasContent(a) && !recent(announcementsWrittenAt)) { skipAnnouncementsSync.current = true; setAnnouncements(a); }
+      if (hasContent(sg) && !recent(smallGroupsWrittenAt)) { skipSmallGroupsSync.current = true; setSmallGroups(sg); }
     }, 20000);
     return () => clearInterval(interval);
   }, [checkedStorage]);
@@ -510,6 +540,7 @@ export default function SwitchLeaderApp() {
       // storage unavailable — roster changes won't survive a refresh
     }
     if (skipRosterSync.current) { skipRosterSync.current = false; return; }
+    rosterWrittenAt.current = Date.now();
     apiSet("roster", roster);
   }, [roster, checkedStorage]);
 
@@ -530,6 +561,7 @@ export default function SwitchLeaderApp() {
       // storage unavailable — announcements won't survive a refresh
     }
     if (skipAnnouncementsSync.current) { skipAnnouncementsSync.current = false; return; }
+    announcementsWrittenAt.current = Date.now();
     apiSet("announcements", announcements);
   }, [announcements, checkedStorage]);
 
@@ -541,6 +573,7 @@ export default function SwitchLeaderApp() {
       // storage unavailable — student roster won't survive a refresh
     }
     if (skipStudentsSync.current) { skipStudentsSync.current = false; return; }
+    studentsWrittenAt.current = Date.now();
     apiSet("students", students);
   }, [students, checkedStorage]);
 
@@ -550,6 +583,7 @@ export default function SwitchLeaderApp() {
       window.localStorage.setItem("switchPosts", JSON.stringify(posts));
     } catch (e) {}
     if (skipPostsSync.current) { skipPostsSync.current = false; return; }
+    postsWrittenAt.current = Date.now();
     apiSet("posts", posts);
   }, [posts, checkedStorage]);
 
@@ -559,6 +593,7 @@ export default function SwitchLeaderApp() {
       window.localStorage.setItem("switchPrayerRequests", JSON.stringify(prayerRequests));
     } catch (e) {}
     if (skipPrayerSync.current) { skipPrayerSync.current = false; return; }
+    prayerWrittenAt.current = Date.now();
     apiSet("prayerRequests", prayerRequests);
   }, [prayerRequests, checkedStorage]);
 
@@ -568,6 +603,7 @@ export default function SwitchLeaderApp() {
       window.localStorage.setItem("switchCelebrations", JSON.stringify(celebrations));
     } catch (e) {}
     if (skipCelebrationsSync.current) { skipCelebrationsSync.current = false; return; }
+    celebrationsWrittenAt.current = Date.now();
     apiSet("celebrations", celebrations);
   }, [celebrations, checkedStorage]);
 
@@ -577,6 +613,7 @@ export default function SwitchLeaderApp() {
       window.localStorage.setItem("switchSmallGroups", JSON.stringify(smallGroups));
     } catch (e) {}
     if (skipSmallGroupsSync.current) { skipSmallGroupsSync.current = false; return; }
+    smallGroupsWrittenAt.current = Date.now();
     apiSet("smallGroups", smallGroups);
   }, [smallGroups, checkedStorage]);
 
@@ -1102,7 +1139,7 @@ export default function SwitchLeaderApp() {
                     }}>×</button>
                   )}
                 </div>
-                <div style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>{a.time}</div>
+                <div style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>{displayTime(a)}</div>
               </Card>
             ))}
             {isAdmin && (
@@ -1116,7 +1153,7 @@ export default function SwitchLeaderApp() {
                 <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
                   <button onClick={() => {
                     if (!announcementDraft.trim()) return;
-                    setAnnouncements([{ body: announcementDraft, time: "just now" }, ...announcements]);
+                    setAnnouncements([{ body: announcementDraft, time: "just now", createdAt: Date.now() }, ...announcements]);
                     setAnnouncementDraft("");
                   }} style={{
                     padding: "8px 16px", borderRadius: 10, border: "none", background: EMBER,
@@ -1928,7 +1965,7 @@ export default function SwitchLeaderApp() {
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <div style={{ fontWeight: 600, color: INK, fontSize: 14 }}>{p.author}</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ fontSize: 12, color: MUTED }}>{p.time}</div>
+                    <div style={{ fontSize: 12, color: MUTED }}>{displayTime(p)}</div>
                     {isAdmin && (
                       <button onClick={() => setPosts(posts.filter((_, idx) => idx !== i))} style={{
                         background: "none", border: "none", color: MUTED, cursor: "pointer",
@@ -1961,7 +1998,7 @@ export default function SwitchLeaderApp() {
                   <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${INK}14`, display: "flex", flexDirection: "column", gap: 10 }}>
                     {p.replies.map((r, ri) => (
                       <div key={ri}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: INK }}>{r.author} <span style={{ fontWeight: 400, color: MUTED }}>· {r.time}</span></div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: INK }}>{r.author} <span style={{ fontWeight: 400, color: MUTED }}>· {displayTime(r)}</span></div>
                         <div style={{ fontSize: 13, color: INK, marginTop: 2 }}>{renderWithMentions(r.body)}</div>
                       </div>
                     ))}
@@ -1978,7 +2015,7 @@ export default function SwitchLeaderApp() {
                     <button onClick={() => {
                       if (!replyDraft.trim()) return;
                       const updated = [...posts];
-                      updated[i] = { ...updated[i], replies: [...updated[i].replies, { author: firstName, body: replyDraft, time: "just now" }] };
+                      updated[i] = { ...updated[i], replies: [...updated[i].replies, { author: firstName, body: replyDraft, time: "just now", createdAt: Date.now() }] };
                       setPosts(updated);
                       setReplyDraft("");
                       setOpenReplyIndex(null);
@@ -2002,7 +2039,7 @@ export default function SwitchLeaderApp() {
                 </div>
                 <button onClick={() => {
                   if (!draft.trim()) return;
-                  setPosts([{ author: firstName, time: "just now", body: draft, likes: 0, liked: false, replies: [] }, ...posts]);
+                  setPosts([{ author: firstName, time: "just now", createdAt: Date.now(), body: draft, likes: 0, liked: false, replies: [] }, ...posts]);
                   setDraft("");
                 }} style={{
                   padding: "8px 16px", borderRadius: 10, border: "none", background: EMBER,
@@ -2023,7 +2060,7 @@ export default function SwitchLeaderApp() {
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <div style={{ fontWeight: 600, color: INK, fontSize: 14 }}>{p.author}</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ fontSize: 12, color: MUTED }}>{p.time}</div>
+                    <div style={{ fontSize: 12, color: MUTED }}>{displayTime(p)}</div>
                     {isAdmin && (
                       <button onClick={() => setPrayerRequests(prayerRequests.filter((_, idx) => idx !== i))} style={{
                         background: "none", border: "none", color: MUTED, cursor: "pointer",
@@ -2056,7 +2093,7 @@ export default function SwitchLeaderApp() {
                 </label>
                 <button onClick={() => {
                   if (!prayerDraft.trim()) return;
-                  setPrayerRequests([{ author: prayerAnon ? "Anonymous" : firstName, time: "just now", body: prayerDraft, praying: 0 }, ...prayerRequests]);
+                  setPrayerRequests([{ author: prayerAnon ? "Anonymous" : firstName, time: "just now", createdAt: Date.now(), body: prayerDraft, praying: 0 }, ...prayerRequests]);
                   setPrayerDraft("");
                   setPrayerAnon(false);
                 }} style={{
@@ -2078,7 +2115,7 @@ export default function SwitchLeaderApp() {
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <div style={{ fontWeight: 600, color: INK, fontSize: 14 }}>{c.author}</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ fontSize: 12, color: MUTED }}>{c.time}</div>
+                    <div style={{ fontSize: 12, color: MUTED }}>{displayTime(c)}</div>
                     {isAdmin && (
                       <button onClick={() => setCelebrations(celebrations.filter((_, idx) => idx !== i))} style={{
                         background: "none", border: "none", color: MUTED, cursor: "pointer",
@@ -2107,7 +2144,7 @@ export default function SwitchLeaderApp() {
               <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
                 <button onClick={() => {
                   if (!celebrationDraft.trim()) return;
-                  setCelebrations([{ author: firstName, time: "just now", body: celebrationDraft, cheers: 0 }, ...celebrations]);
+                  setCelebrations([{ author: firstName, time: "just now", createdAt: Date.now(), body: celebrationDraft, cheers: 0 }, ...celebrations]);
                   setCelebrationDraft("");
                 }} style={{
                   padding: "8px 16px", borderRadius: 10, border: "none", background: EMBER,
